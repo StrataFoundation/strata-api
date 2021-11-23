@@ -46,51 +46,37 @@ const schema = gql`
   }
 
   type Query {
-    totalWumLocked: Float
-    wumHeld(wallet: String!): Float
-    accountRank(mint: String!, publicKey: String!): Int
-    topHolders(mint: String!, startRank: Int!, stopRank: Int!): [Account!]!
-    wumRank(publicKey: String!): Int
-    topWumHolders(startRank: Int!, stopRank: Int!): [Account!]!
-    tokenRank(tokenBondingKey: String!): Int
-    topTokens(startRank: Int!, stopRank: Int!): [Account!]!
+    holderRank(tokenBonding: String!, account: String!): Int
+    topHolders(tokenBonding: String!, startRank: Int!, stopRank: Int!): [Account!]!
+    tokenRank(baseMint: String!, tokenBonding: String!): Int
+    topTokens(baseMint: String!, startRank: Int!, stopRank: Int!): [Account!]!
   }
 `
 
-function accountsByBalanceKey(mint: string): string {
+function accountsByBalanceKey(tokenBonding: string): string {
+  return `accounts-by-balance-${tokenBonding}`
+}
+
+function bondingByTvlKey(mint: string): string {
   return `accounts-by-balance-${mint}`
 }
 
 const resolvers: IResolvers = {
   Query: {
-    async totalWumLocked() {
-      return Number(await promisify(redisClient.get).bind(redisClient, "total-wum-locked")())
-    },
-    async wumHeld(_, { wallet }) {
-      return Number(await promisify(redisClient.zscore).bind(redisClient, "wum-locked", wallet)())
-    },
-    async accountRank(_, { mint, publicKey }) {
-      const rank = await promisify(redisClient.zrevrank).bind(redisClient, accountsByBalanceKey(mint), publicKey)()
+    async holderRank(_, { tokenBonding, account }) {
+      const rank = await promisify(redisClient.zrevrank).bind(redisClient, accountsByBalanceKey(tokenBonding), account)()
       return rank
     },
-    async topHolders(_, { mint, startRank, stopRank }) {
-      const keys: string[] = (await promisify(redisClient.zrevrange).bind(redisClient, accountsByBalanceKey(mint), startRank, stopRank)()) as string[];
+    async topHolders(_, { tokenBonding, startRank, stopRank }) {
+      const keys: string[] = (await promisify(redisClient.zrevrange).bind(redisClient, accountsByBalanceKey(tokenBonding), startRank, stopRank)()) as string[];
       return keys.map(publicKey => ({ publicKey }));
     },
-    async wumRank(_, { publicKey }) {
-      const rank = await promisify(redisClient.zrevrank).bind(redisClient, "wum-locked", publicKey)()
+    async tokenRank(_, { baseMint, tokenBonding }) {
+      const rank = await promisify(redisClient.zrevrank).bind(redisClient, bondingByTvlKey(baseMint), tokenBonding)()
       return rank
     },
-    async topWumHolders(_, { startRank, stopRank }) {
-      const keys: string[] = (await promisify(redisClient.zrevrange).bind(redisClient, "wum-locked", startRank, stopRank)()) as string[];
-      return keys.map(publicKey => ({ publicKey }));
-    },
-    async tokenRank(_, { tokenBondingKey }) {
-      const rank = await promisify(redisClient.zrevrank).bind(redisClient, "top-tokens", tokenBondingKey)()
-      return rank
-    },
-    async topTokens(_, { startRank, stopRank }) {
-      const keys: string[] = (await promisify(redisClient.zrevrange).bind(redisClient, "top-tokens", startRank, stopRank)()) as string[];
+    async topTokens(_, { baseMint, startRank, stopRank }) {
+      const keys: string[] = (await promisify(redisClient.zrevrange).bind(redisClient, bondingByTvlKey(baseMint), startRank, stopRank)()) as string[];
       return keys.map(publicKey => ({ publicKey }));
     }
   }

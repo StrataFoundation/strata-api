@@ -29,8 +29,8 @@ async function run(): Promise<void> {
         connection,
         name,
         NameRegistryState.HEADER_LEN,
-        serviceAccount.publicKey,
-        serviceAccount.publicKey
+        serviceAccount.publicKey, // Payer
+        serviceAccount.publicKey // Owner
       )
     )
     await sendAndConfirmTransaction(connection, nameTx, [serviceAccount]);

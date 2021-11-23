@@ -37,45 +37,30 @@ export type Account = {
 
 export type Query = {
   __typename?: "Query";
-  totalWumLocked?: Maybe<Scalars["Float"]>;
-  wumHeld?: Maybe<Scalars["Float"]>;
-  accountRank?: Maybe<Scalars["Int"]>;
+  holderRank?: Maybe<Scalars["Int"]>;
   topHolders: Array<Account>;
-  wumRank?: Maybe<Scalars["Int"]>;
-  topWumHolders: Array<Account>;
   tokenRank?: Maybe<Scalars["Int"]>;
   topTokens: Array<Account>;
 };
 
-export type QuerywumHeldArgs = {
-  wallet: Scalars["String"];
-};
-
-export type QueryaccountRankArgs = {
-  mint: Scalars["String"];
-  publicKey: Scalars["String"];
+export type QueryholderRankArgs = {
+  tokenBonding: Scalars["String"];
+  account: Scalars["String"];
 };
 
 export type QuerytopHoldersArgs = {
-  mint: Scalars["String"];
-  startRank: Scalars["Int"];
-  stopRank: Scalars["Int"];
-};
-
-export type QuerywumRankArgs = {
-  publicKey: Scalars["String"];
-};
-
-export type QuerytopWumHoldersArgs = {
+  tokenBonding: Scalars["String"];
   startRank: Scalars["Int"];
   stopRank: Scalars["Int"];
 };
 
 export type QuerytokenRankArgs = {
-  tokenBondingKey: Scalars["String"];
+  baseMint: Scalars["String"];
+  tokenBonding: Scalars["String"];
 };
 
 export type QuerytopTokensArgs = {
+  baseMint: Scalars["String"];
   startRank: Scalars["Int"];
   stopRank: Scalars["Int"];
 };
@@ -197,7 +182,6 @@ export type ResolversTypes = {
   Account: ResolverTypeWrapper<Account>;
   String: ResolverTypeWrapper<Scalars["String"]>;
   Query: ResolverTypeWrapper<{}>;
-  Float: ResolverTypeWrapper<Scalars["Float"]>;
   Int: ResolverTypeWrapper<Scalars["Int"]>;
   Boolean: ResolverTypeWrapper<Scalars["Boolean"]>;
 };
@@ -207,7 +191,6 @@ export type ResolversParentTypes = {
   Account: Account;
   String: Scalars["String"];
   Query: {};
-  Float: Scalars["Float"];
   Int: Scalars["Int"];
   Boolean: Scalars["Boolean"];
 };
@@ -224,52 +207,32 @@ export type QueryResolvers<
   ContextType = MercuriusContext,
   ParentType extends ResolversParentTypes["Query"] = ResolversParentTypes["Query"]
 > = {
-  totalWumLocked?: Resolver<
-    Maybe<ResolversTypes["Float"]>,
-    ParentType,
-    ContextType
-  >;
-  wumHeld?: Resolver<
-    Maybe<ResolversTypes["Float"]>,
-    ParentType,
-    ContextType,
-    RequireFields<QuerywumHeldArgs, "wallet">
-  >;
-  accountRank?: Resolver<
+  holderRank?: Resolver<
     Maybe<ResolversTypes["Int"]>,
     ParentType,
     ContextType,
-    RequireFields<QueryaccountRankArgs, "mint" | "publicKey">
+    RequireFields<QueryholderRankArgs, "tokenBonding" | "account">
   >;
   topHolders?: Resolver<
     Array<ResolversTypes["Account"]>,
     ParentType,
     ContextType,
-    RequireFields<QuerytopHoldersArgs, "mint" | "startRank" | "stopRank">
-  >;
-  wumRank?: Resolver<
-    Maybe<ResolversTypes["Int"]>,
-    ParentType,
-    ContextType,
-    RequireFields<QuerywumRankArgs, "publicKey">
-  >;
-  topWumHolders?: Resolver<
-    Array<ResolversTypes["Account"]>,
-    ParentType,
-    ContextType,
-    RequireFields<QuerytopWumHoldersArgs, "startRank" | "stopRank">
+    RequireFields<
+      QuerytopHoldersArgs,
+      "tokenBonding" | "startRank" | "stopRank"
+    >
   >;
   tokenRank?: Resolver<
     Maybe<ResolversTypes["Int"]>,
     ParentType,
     ContextType,
-    RequireFields<QuerytokenRankArgs, "tokenBondingKey">
+    RequireFields<QuerytokenRankArgs, "baseMint" | "tokenBonding">
   >;
   topTokens?: Resolver<
     Array<ResolversTypes["Account"]>,
     ParentType,
     ContextType,
-    RequireFields<QuerytopTokensArgs, "startRank" | "stopRank">
+    RequireFields<QuerytopTokensArgs, "baseMint" | "startRank" | "stopRank">
   >;
 };
 
