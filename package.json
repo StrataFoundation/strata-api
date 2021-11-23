@@ -1,13 +1,13 @@
 {
-  "name": "@wum.bo/api",
+  "name": "@strata-foundation/api",
   "version": "1.0.0",
   "private": true,
-  "description": "Wum.bo GraphQL API",
+  "description": "Strata GraphQL API",
   "keywords": [
     "graphql-codegen"
   ],
   "license": "MIT",
-  "author": "Wum.bo Inc.",
+  "author": "Strata Foundation",
   "main": "dist/index.js",
   "scripts": {
     "build": "tsc",
