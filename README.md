@@ -1,2 +1,2 @@
-# wumbo-api
-Wum.bo graphql api
+# strata-api
+Strata graphql api
