@@ -48,7 +48,7 @@ function accountsByBalanceKey(tokenBonding: string): string {
 }
 
 function bondingByTvlKey(mint: string): string {
-  return `accounts-by-balance-${mint}`
+  return `bonding-by-tvl-${mint}`
 }
 
 const resolvers: IResolvers = {
