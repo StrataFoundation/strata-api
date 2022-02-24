@@ -51,6 +51,16 @@ type Truthy<T> = T extends false | "" | 0 | null | undefined ? never : T; // fro
 
 const truthy = <T>(value: T): value is Truthy<T> => !!value;
 
+function getReserve(data: Buffer): PublicKey {
+  const firstOptionOffset = data[0] * 32 + 1;
+  const secondOptionOffset =
+    firstOptionOffset + data[firstOptionOffset] * 32 + 1;
+  const thirdOptionOffset =
+    secondOptionOffset + data[secondOptionOffset] * 32 + 1;
+
+  return new PublicKey(data.slice(thirdOptionOffset, thirdOptionOffset + 32));
+}
+
 let tokenBondingSdk: SplTokenBonding;
 async function getBondingSdk() {
   if (tokenBondingSdk) {
@@ -99,8 +109,13 @@ async function populateTopTokens(baseMint: PublicKey): Promise<ITopToken[]> {
     tokenBondingSdk.programId,
     {
       dataSlice: {
-        length: 32,
-        offset: descriminator.length + (5 * 32) + 3,
+        length:
+          32 + // base storage
+          3 * 32 +
+          3, // Optional authorities
+        offset:
+          2 * 32 + // base, target mints
+          descriminator.length,
       },
       filters,
     }
@@ -108,7 +123,7 @@ async function populateTopTokens(baseMint: PublicKey): Promise<ITopToken[]> {
 
   const amounts = (await Promise.all(
     reserves.map(async (reserve) => {
-      const acc = new PublicKey(reserve.account.data);
+      const acc = getReserve(reserve.account.data);
       try {
         return {
           tokenBonding: reserve.pubkey.toBase58(),
