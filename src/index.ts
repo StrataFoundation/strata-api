@@ -1,31 +1,31 @@
-import Fastify, { FastifyReply, FastifyRequest } from 'fastify'
-import mercurius, { IResolvers, MercuriusLoaders } from 'mercurius'
-import mercuriusCodegen, { gql } from 'mercurius-codegen'
-import redis from "redis";
-import { promisify } from 'util';
+import { BorshAccountsCoder } from "@project-serum/anchor";
+import { NATIVE_MINT } from "@solana/spl-token";
+import { SplTokenBonding } from "@strata-foundation/spl-token-bonding";
+import Fastify, { FastifyReply, FastifyRequest } from "fastify";
+import mercurius, { IResolvers, MercuriusLoaders } from "mercurius";
+import mercuriusCodegen, { gql } from "mercurius-codegen";
+import { provider } from "./solana";
+import bs58 from "bs58";
+import { PublicKey } from "@solana/web3.js";
+import axios from "axios";
 
-export const redisClient = redis.createClient({
-  host: process.env["REDIS_HOST"] || "localhost",
-  port: Number(process.env["REDIS_PORT"] || "6379")
-})
+export const app = Fastify();
 
-export const app = Fastify()
-
-app.register(require('fastify-cors'), {
+app.register(require("fastify-cors"), {
   origin: (origin: any, cb: any) => {
-    cb(null, true)
-  }
-})
+    cb(null, true);
+  },
+});
 
 const buildContext = async (req: FastifyRequest, _reply: FastifyReply) => {
   return {
     authorization: req.headers.authorization,
-  }
-}
+  };
+};
 
-type PromiseType<T> = T extends PromiseLike<infer U> ? U : T
+type PromiseType<T> = T extends PromiseLike<infer U> ? U : T;
 
-declare module 'mercurius' {
+declare module "mercurius" {
   interface MercuriusContext
     extends PromiseType<ReturnType<typeof buildContext>> {}
 }
@@ -37,43 +37,159 @@ const schema = gql`
 
   type Query {
     holderRank(tokenBonding: String!, account: String!): Int
-    topHolders(tokenBonding: String!, startRank: Int!, stopRank: Int!): [Account!]!
+    topHolders(
+      tokenBonding: String!
+      startRank: Int!
+      stopRank: Int!
+    ): [Account!]!
     tokenRank(baseMint: String!, tokenBonding: String!): Int
     topTokens(baseMint: String!, startRank: Int!, stopRank: Int!): [Account!]!
   }
-`
+`;
 
-function accountsByBalanceKey(tokenBonding: string): string {
-  return `accounts-by-balance-${tokenBonding}`
+type Truthy<T> = T extends false | "" | 0 | null | undefined ? never : T; // from lodash
+
+const truthy = <T>(value: T): value is Truthy<T> => !!value;
+
+let tokenBondingSdk: SplTokenBonding;
+async function getBondingSdk() {
+  if (tokenBondingSdk) {
+    return tokenBondingSdk;
+  }
+
+  tokenBondingSdk = await SplTokenBonding.init(provider);
+
+  return tokenBondingSdk;
 }
 
-function bondingByTvlKey(mint: string): string {
-  return `bonding-by-tvl-${mint}`
+interface ITopToken {
+  tokenBonding: string;
+  amount: number;
+}
+const topTokensCache: Map<string, { date: Date, tokens: ITopToken[] }> = new Map();
+async function populateTopTokens(baseMint: PublicKey): Promise<ITopToken[]> {
+  const tokenBondingSdk = await getBondingSdk();
+  const state = await tokenBondingSdk.getState();
+  if (baseMint.equals(NATIVE_MINT)) {
+    baseMint = state!.wrappedSolMint;
+  }
+  const descriminator =
+    BorshAccountsCoder.accountDiscriminator("tokenBondingV0");
+  const filters = [
+    {
+      memcmp: {
+        offset: 0,
+        bytes: bs58.encode(
+          Buffer.concat([descriminator, baseMint?.toBuffer()].filter(truthy))
+        ),
+      },
+    },
+    {
+      // All royalties should be 0 and curve should be fixed and mint cap + purchase cap not defined
+      memcmp: {
+        offset:
+          descriminator.length,
+        bytes: bs58.encode(
+          baseMint.toBuffer()
+        ),
+      },
+    },
+  ];
+  const reserves = await provider.connection.getProgramAccounts(
+    tokenBondingSdk.programId,
+    {
+      dataSlice: {
+        length: 32,
+        offset: descriminator.length + (5 * 32) + 3,
+      },
+      filters,
+    }
+  );
+
+  const amounts = (await Promise.all(
+    reserves.map(async (reserve) => {
+      const acc = new PublicKey(reserve.account.data);
+      try {
+        return {
+          tokenBonding: reserve.pubkey.toBase58(),
+          amount:
+            (await provider.connection.getTokenAccountBalance(acc)).value
+              .uiAmount || 0,
+        };
+      } catch (e: any) {
+        console.error(`Failed on ${acc.toBase58()}`, e);
+      }
+    })
+  )).filter(truthy);
+  
+  const topTokens = amounts.sort((a1, a2) => a2.amount - a1.amount);
+  topTokensCache.set(baseMint.toBase58(), {
+    date: new Date(),
+    tokens: topTokens
+  });
+
+  return topTokens;
+}
+
+function minutesAgo(minutes: number): Date {
+  var currentDate = new Date();
+  return  new Date(currentDate.getTime() - minutes*60000);
+}
+
+async function getTopTokens(baseMint: PublicKey): Promise<ITopToken[]> {
+  if (!topTokensCache.has(baseMint.toBase58()) || topTokensCache.get(baseMint.toBase58())!.date < minutesAgo(30)) {
+    return populateTopTokens(baseMint);
+  }
+
+  return topTokensCache.get(baseMint.toBase58())!.tokens
+}
+
+async function getTopHolders(tokenBonding: PublicKey, start: number, stop: number): Promise<PublicKey[]> {
+  const tokenBondingSdk = await getBondingSdk();
+  const bonding = (await tokenBondingSdk.getTokenBonding(tokenBonding))!
+  const holders = await axios.get(
+    `https://api.solscan.io/token/holders`, {
+      params: {
+        token: bonding.targetMint.toBase58(),
+        offset: start,
+        size: stop - start
+      }
+    }
+  );
+
+
+  return holders.data.data.result.map((h: any) => new PublicKey(h.address));
 }
 
 const resolvers: IResolvers = {
   Query: {
     async holderRank(_, { tokenBonding, account }) {
-      const rank = await promisify(redisClient.zrevrank).bind(redisClient, accountsByBalanceKey(tokenBonding), account)()
-      return rank
+      const keys: string[] = (
+        await getTopHolders(new PublicKey(tokenBonding), 0, 10000)
+      ).map((p) => p.toBase58());
+      const rank = keys.indexOf(account);
+      return rank;
     },
     async topHolders(_, { tokenBonding, startRank, stopRank }) {
-      const keys: string[] = (await promisify(redisClient.zrevrange).bind(redisClient, accountsByBalanceKey(tokenBonding), startRank, stopRank)()) as string[];
-      return keys.map(publicKey => ({ publicKey }));
+      const keys: string[] = (await getTopHolders(new PublicKey(tokenBonding), startRank, stopRank)).map(p => p.toBase58())
+      return keys.map((publicKey) => ({ publicKey }));
     },
     async tokenRank(_, { baseMint, tokenBonding }) {
-      const rank = await promisify(redisClient.zrevrank).bind(redisClient, bondingByTvlKey(baseMint), tokenBonding)()
-      return rank
+      const tokens = (await getTopTokens(new PublicKey(baseMint)));
+      const rank = tokens
+        .findIndex(i => i.tokenBonding == tokenBonding)
+      console.log(tokens);
+
+      return rank;
     },
     async topTokens(_, { baseMint, startRank, stopRank }) {
-      const keys: string[] = (await promisify(redisClient.zrevrange).bind(redisClient, bondingByTvlKey(baseMint), startRank, stopRank)()) as string[];
-      return keys.map(publicKey => ({ publicKey }));
-    }
-  }
-}
+      const keys = (await getTopTokens(new PublicKey(baseMint))).slice(startRank, stopRank).map(k => k.tokenBonding);
+      return keys.map((publicKey) => ({ publicKey }));
+    },
+  },
+};
 
-const loaders: MercuriusLoaders = {
-}
+const loaders: MercuriusLoaders = {};
 
 app.register(mercurius, {
   schema,
@@ -81,16 +197,16 @@ app.register(mercurius, {
   loaders,
   context: buildContext,
   subscription: true,
-  graphiql: true
-})
+  graphiql: true,
+});
 
-app.get('/', async () => {
-  return { healthy: 'true' }
-})
+app.get("/", async () => {
+  return { healthy: "true" };
+});
 
 mercuriusCodegen(app, {
-  targetPath: './src/graphql/generated.ts',
-  operationsGlob: './src/graphql/operations/*.gql',
-}).catch(console.error)
+  targetPath: "./src/graphql/generated.ts",
+  operationsGlob: "./src/graphql/operations/*.gql",
+}).catch(console.error);
 
-app.listen(Number(process.env["PORT"] || "8080"), '0.0.0.0')
+app.listen(Number(process.env["PORT"] || "8080"), "0.0.0.0");
