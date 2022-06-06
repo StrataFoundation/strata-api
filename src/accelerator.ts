@@ -1,0 +1,158 @@
+import { SocketStream } from "@fastify/websocket";
+import { FastifyInstance, FastifyRequest } from "fastify";
+import { Connection, Transaction } from "@solana/web3.js";
+import { v4 as uuid } from "uuid";
+
+enum Cluster {
+  Devnet = "devnet",
+  Mainnet = "mainnet-beta",
+  Testnet = "testnet",
+  Localnet = "localnet",
+};
+
+
+function getRpc(cluster: Cluster) {
+  if (cluster === "localnet") {
+    return "http://127.0.0.1:8899"
+  } else if (cluster === "devnet") {
+    return "https://psytrbhymqlkfrhudd.dev.genesysgo.net:8899/"
+  } else {
+    return "https://strataprotocol.genesysgo.net"
+  }
+}
+
+enum PayloadType {
+  Transaction = "transaction",
+  Subscribe = "subscribe",
+  Unsubscribe = "unsubscribe",
+}
+
+enum ResponseType {
+  Error = "error",
+  Transaction = "transaction",
+  Unsubscribe = "unsubscribe",
+  Subscribe = "subscribe",
+}
+
+interface Payload {
+  type: PayloadType;
+  cluster: Cluster;
+}
+
+interface TransactionPayload extends Payload {
+  transactionBytes: number[];
+}
+
+interface ValidTransactionPayload extends TransactionPayload {
+  txid: string;
+}
+
+type StringPublicKey = string;
+
+interface SubscribePayload extends Payload {
+  account: StringPublicKey;
+}
+
+interface UnsubscribePayload extends Payload {
+  id: string
+}
+
+// cluster + txid => subsription id => handler
+const subscriptions: Record<string, Record<string, (tx: TransactionPayload) => void>> = {};
+const subsForSubscriptionId: Record<string, string> = {};
+
+function handleValidTx(payload: ValidTransactionPayload): void {
+  const tx = Transaction.from(new Uint8Array(payload.transactionBytes));
+  const accounts = tx.compileMessage().accountKeys
+
+  accounts.map(account => {
+    const sub = payload.cluster + account.toBase58();
+    if (subscriptions[sub]) {
+      Object.values(subscriptions[sub]).map(handler => handler(payload))
+    }
+  })
+}
+
+function getSub(payload: SubscribePayload): string {
+  return payload.cluster + payload.account
+}
+
+function subscribe(
+  payload: SubscribePayload,
+  handler: (tx: TransactionPayload) => void
+): string {
+  const id = uuid();
+  const sub = getSub(payload);
+
+  subscriptions[sub] = subscriptions[sub] || {};
+  subscriptions[sub][id] = handler;
+  subsForSubscriptionId[id] = sub;
+
+  return id;
+}
+
+function unsubscribe(payload: UnsubscribePayload): void {
+  const sub = subsForSubscriptionId[payload.id];
+  delete subscriptions[sub][payload.id];
+  delete subsForSubscriptionId[payload.id];
+}
+
+export function accelerator(app: FastifyInstance) {
+  app.register(require("@fastify/websocket"));
+  app.register(async function (fastify) {
+    fastify.get(
+      "/accelerator",
+      { websocket: true },
+      (connection: SocketStream, req: FastifyRequest) => {
+        connection.socket.on("message", async (message) => {
+          const payload: Payload = JSON.parse(message.toString());
+
+          switch (payload.type) {
+            case PayloadType.Transaction:
+              const transactionPayload = payload as TransactionPayload;
+              const tx = Transaction.from(new Uint8Array(transactionPayload.transactionBytes));
+              const solConnection = new Connection(getRpc(payload.cluster));
+
+              const resp = await solConnection.simulateTransaction(tx);
+              const err = resp.value.err;
+              if (err) {
+                connection.socket.send(JSON.stringify({
+                  type: ResponseType.Error,
+                  error: err,
+                }));
+              }
+              const txid = await solConnection.sendRawTransaction(
+                tx.serialize(),
+                {
+                  skipPreflight: true,
+                }
+              );
+
+              handleValidTx({ ...transactionPayload, txid });
+              break;
+
+            case PayloadType.Subscribe:
+              const subscribePayload = payload as SubscribePayload;
+              const id = subscribe(subscribePayload, (txPayload) =>
+                connection.socket.send(JSON.stringify(txPayload))
+              );
+              connection.socket.send(JSON.stringify({
+                type: ResponseType.Subscribe,
+                id,
+              }));
+              break;
+
+            case PayloadType.Unsubscribe:
+              const unsubscribePayload = payload as UnsubscribePayload;
+              unsubscribe(unsubscribePayload);
+              connection.socket.send(JSON.stringify({
+                type: ResponseType.Unsubscribe,
+                successful: true,
+              }));
+              break;
+          }
+        });
+      }
+    );
+  });
+}

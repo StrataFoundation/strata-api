@@ -17,18 +17,21 @@
     "bootstrap": "npm run build && node dist/bootstrap.js"
   },
   "dependencies": {
+    "@fastify/websocket": "^5.0.0",
     "@project-serum/anchor": "^0.22.0",
     "@solana/spl-token": "0.1.8",
-    "@solana/web3.js": "^1.29.0",
+    "@solana/web3.js": "^1.43.4",
     "@strata-foundation/spl-token-bonding": "^3.2.5-bounty.3",
     "@types/redis": "^2.8.31",
+    "@types/uuid": "^8.3.4",
     "axios": "^0.26.0",
     "fastify": "^3.19.2",
     "fastify-cors": "^6.0.2",
     "graphql": "^15.5.1",
     "mercurius": "^8.1.1",
     "mercurius-codegen": "workspace:^1.7.0",
-    "redis": "^3.1.2"
+    "redis": "^3.1.2",
+    "uuid": "^8.3.2"
   },
   "devDependencies": {
     "@graphql-typed-document-node/core": "^3.1.0",

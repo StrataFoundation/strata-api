@@ -8,6 +8,7 @@ import { provider } from "./solana";
 import bs58 from "bs58";
 import { PublicKey } from "@solana/web3.js";
 import axios from "axios";
+import { accelerator } from "./accelerator";
 
 export const app = Fastify();
 
@@ -223,5 +224,7 @@ mercuriusCodegen(app, {
   targetPath: "./src/graphql/generated.ts",
   operationsGlob: "./src/graphql/operations/*.gql",
 }).catch(console.error);
+
+accelerator(app);
 
 app.listen(Number(process.env["PORT"] || "8080"), "0.0.0.0");
