@@ -1,6 +1,6 @@
 import { SocketStream } from "@fastify/websocket";
 import { FastifyInstance, FastifyRequest } from "fastify";
-import { Connection, Transaction } from "@solana/web3.js";
+import { Connection, SYSVAR_CLOCK_PUBKEY, Transaction } from "@solana/web3.js";
 import { v4 as uuid } from "uuid";
 
 enum Cluster {
@@ -44,6 +44,7 @@ interface TransactionPayload extends Payload {
 }
 
 interface ValidTransactionPayload extends TransactionPayload {
+  blockTime: number;
   txid: string;
 }
 
@@ -104,6 +105,16 @@ export function accelerator(app: FastifyInstance) {
       "/accelerator",
       { websocket: true },
       (connection: SocketStream, req: FastifyRequest) => {
+        let ids: { id: string, cluster: Cluster }[] = [];
+
+        connection.socket.on("close", () => {
+          Array.from(ids).map(({ cluster, id }) => unsubscribe({
+            type: PayloadType.Unsubscribe,
+            cluster,
+            id
+          }));
+        })
+        
         connection.socket.on("message", async (message) => {
           const payload: Payload = JSON.parse(message.toString());
 
@@ -121,6 +132,9 @@ export function accelerator(app: FastifyInstance) {
                   error: err,
                 }));
               }
+              const blockTime = (
+                await solConnection.getAccountInfo(SYSVAR_CLOCK_PUBKEY)
+              )!.data.readBigInt64LE(8 * 4);
               const txid = await solConnection.sendRawTransaction(
                 tx.serialize(),
                 {
@@ -128,7 +142,7 @@ export function accelerator(app: FastifyInstance) {
                 }
               );
 
-              handleValidTx({ ...transactionPayload, txid });
+              handleValidTx({ ...transactionPayload, blockTime: Number(blockTime), txid });
               break;
 
             case PayloadType.Subscribe:
@@ -136,6 +150,10 @@ export function accelerator(app: FastifyInstance) {
               const id = subscribe(subscribePayload, (txPayload) =>
                 connection.socket.send(JSON.stringify(txPayload))
               );
+              ids.push({
+                id,
+                cluster: payload.cluster
+              });
               connection.socket.send(JSON.stringify({
                 type: ResponseType.Subscribe,
                 id,
@@ -145,6 +163,7 @@ export function accelerator(app: FastifyInstance) {
             case PayloadType.Unsubscribe:
               const unsubscribePayload = payload as UnsubscribePayload;
               unsubscribe(unsubscribePayload);
+              ids = ids.filter(i => i.id !== unsubscribePayload.id);
               connection.socket.send(JSON.stringify({
                 type: ResponseType.Unsubscribe,
                 successful: true,
