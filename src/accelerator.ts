@@ -1,6 +1,6 @@
 import { SocketStream } from "@fastify/websocket";
 import { FastifyInstance, FastifyRequest } from "fastify";
-import { Connection, SYSVAR_CLOCK_PUBKEY, Transaction } from "@solana/web3.js";
+import { Connection, RpcResponseAndContext, SimulatedTransactionResponse, SYSVAR_CLOCK_PUBKEY, Transaction } from "@solana/web3.js";
 import { v4 as uuid } from "uuid";
 
 enum Cluster {
@@ -124,13 +124,14 @@ export function accelerator(app: FastifyInstance) {
               const tx = Transaction.from(new Uint8Array(transactionPayload.transactionBytes));
               const solConnection = new Connection(getRpc(payload.cluster));
 
-              const resp = await solConnection.simulateTransaction(tx);
+              const resp = await retryBlockhashNotFound(solConnection, tx)
               const err = resp.value.err;
               if (err) {
                 connection.socket.send(JSON.stringify({
                   type: ResponseType.Error,
                   error: err,
                 }));
+                return;
               }
               const blockTime = (
                 await solConnection.getAccountInfo(SYSVAR_CLOCK_PUBKEY)
@@ -175,3 +176,23 @@ export function accelerator(app: FastifyInstance) {
     );
   });
 }
+
+async function retryBlockhashNotFound(
+  solConnection: Connection,
+  tx: Transaction,
+  tries: number = 0
+): Promise<RpcResponseAndContext<SimulatedTransactionResponse>> {
+  const resp = await solConnection.simulateTransaction(tx);
+  const err = resp.value.err;
+  if (err === "BlockhashNotFound" && tries < 5) {
+    await sleep(300)
+    return retryBlockhashNotFound(solConnection, tx, tries + 1);
+  }
+
+  return resp;
+}
+
+function sleep(arg0: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(() => resolve(), arg0))
+}
+
