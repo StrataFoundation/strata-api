@@ -117,6 +117,7 @@ export function accelerator(app: FastifyInstance) {
         
         connection.socket.on("message", async (message) => {
           const payload: Payload = JSON.parse(message.toString());
+          const alreadySubscribedAccounts: Record<string, string> = {}
 
           switch (payload.type) {
             case PayloadType.Transaction:
@@ -148,13 +149,22 @@ export function accelerator(app: FastifyInstance) {
 
             case PayloadType.Subscribe:
               const subscribePayload = payload as SubscribePayload;
-              const id = subscribe(subscribePayload, (txPayload) =>
-                connection.socket.send(JSON.stringify(txPayload))
-              );
-              ids.push({
-                id,
-                cluster: payload.cluster
-              });
+              let id: string;
+              if (!alreadySubscribedAccounts[subscribePayload.account + subscribePayload.cluster]) {
+                id = subscribe(subscribePayload, (txPayload) =>
+                  connection.socket.send(JSON.stringify(txPayload))
+                );
+                alreadySubscribedAccounts[
+                  subscribePayload.account + subscribePayload.cluster
+                ] = id;
+                ids.push({
+                  id,
+                  cluster: payload.cluster,
+                });
+              } else {
+                id = alreadySubscribedAccounts[subscribePayload.account + subscribePayload.cluster]
+              }
+              
               connection.socket.send(JSON.stringify({
                 type: ResponseType.Subscribe,
                 id,
