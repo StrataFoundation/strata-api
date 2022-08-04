@@ -93,10 +93,16 @@ function publishTx(payload: ValidTransactionPayload): Promise<boolean[]> {
   const tx = Transaction.from(new Uint8Array(payload.transactionBytes));
   const accounts = tx.compileMessage().accountKeys;
 
-  return Promise.all(accounts.map((account) => {
-    const sub = payload.cluster + account.toBase58();
-    return channel.publish(exchange, sub, Buffer.from(JSON.stringify(payload)));
-  }));
+  return Promise.all(
+    accounts.map((account) => {
+      const sub = payload.cluster + account.toBase58();
+      return channel.publish(
+        exchange,
+        sub,
+        Buffer.from(JSON.stringify(payload))
+      );
+    })
+  );
 }
 
 function getSub(payload: SubscribePayload): string {
@@ -109,7 +115,7 @@ async function subscribe(
 ): Promise<string> {
   const id = uuid();
   const sub = getSub(payload);
-  
+
   if (Object.keys(subscriptions[sub] || {}).length == 0) {
     await channel.bindQueue(queue.queue, exchange, sub);
   }
@@ -129,32 +135,42 @@ async function unsubscribe(payload: UnsubscribePayload): Promise<void> {
   }
   delete subsForSubscriptionId[payload.id];
   if (numSubs == 0) {
-    await channel.unbindQueue(queue.queue, exchange, sub)
+    await channel.unbindQueue(queue.queue, exchange, sub);
   }
 }
 
 export function accelerator(app: FastifyInstance) {
   (async () => {
-    conn = await amqp.connect(process.env.RABBIT_URL);
-    channel = await conn.createChannel();
-    await channel.assertExchange(exchange, "direct", {
-      durable: true,
-    });
-    queue = await channel.assertQueue("", { exclusive: true });
-    await channel.consume(
-      queue.queue,
-      function (msg) {
-        if (msg) {
-          const content = JSON.parse(msg.content.toString());
-          handleValidTx(content)
+    try {
+      conn = await amqp.connect({
+        protocol: process.env.RABBIT_PROTOCOL || "amqp",
+        hostname: process.env.RABBIT_HOSTNAME!,
+        port: process.env.RABBIT_PORT ? Number(process.env.RABBIT_PORT) : 5672,
+        username: process.env.RABBIT_USERNAME,
+        password: process.env.RABBIT_PASSWORD,
+      });
+      channel = await conn.createChannel();
+      await channel.assertExchange(exchange, "direct", {
+        durable: true,
+      });
+      queue = await channel.assertQueue("", { exclusive: true });
+      await channel.consume(
+        queue.queue,
+        function (msg) {
+          if (msg) {
+            const content = JSON.parse(msg.content.toString());
+            handleValidTx(content);
+          }
+        },
+        {
+          noAck: true,
         }
-      },
-      {
-        noAck: true,
-      }
-    );
+      );
+    } catch (e: any) {
+      console.error(e);
+      process.exit(1)
+    }
   })();
-
 
   app.register(require("@fastify/websocket"));
   app.register(async function (fastify) {
@@ -165,13 +181,15 @@ export function accelerator(app: FastifyInstance) {
         let ids: { id: string; cluster: Cluster }[] = [];
 
         connection.socket.on("close", async () => {
-          await Promise.all(Array.from(ids).map(({ cluster, id }) =>
-            unsubscribe({
-              type: PayloadType.Unsubscribe,
-              cluster,
-              id,
-            })
-          ));
+          await Promise.all(
+            Array.from(ids).map(({ cluster, id }) =>
+              unsubscribe({
+                type: PayloadType.Unsubscribe,
+                cluster,
+                id,
+              })
+            )
+          );
         });
 
         connection.socket.on("message", async (message) => {
@@ -206,7 +224,7 @@ export function accelerator(app: FastifyInstance) {
                   skipPreflight: true,
                 }
               );
-              
+
               await publishTx({
                 ...transactionPayload,
                 blockTime: Number(blockTime),
