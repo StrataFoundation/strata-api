@@ -35,12 +35,21 @@ export type Account = {
   publicKey: Scalars["String"];
 };
 
+export type Chat = {
+  __typename?: "Chat";
+  publicKey: Scalars["String"];
+  name: Scalars["String"];
+  dailyActiveUsers: Scalars["Int"];
+  identifierCertificateMint: Scalars["String"];
+};
+
 export type Query = {
   __typename?: "Query";
   holderRank?: Maybe<Scalars["Int"]>;
   topHolders: Array<Account>;
   tokenRank?: Maybe<Scalars["Int"]>;
   topTokens: Array<Account>;
+  chats: Array<Chat>;
 };
 
 export type QueryholderRankArgs = {
@@ -63,6 +72,10 @@ export type QuerytopTokensArgs = {
   baseMint: Scalars["String"];
   startRank: Scalars["Int"];
   stopRank: Scalars["Int"];
+};
+
+export type QuerychatsArgs = {
+  pubkeys?: Maybe<Array<Maybe<Scalars["String"]>>>;
 };
 
 export type ResolverTypeWrapper<T> = Promise<T> | T;
@@ -181,8 +194,9 @@ export type DirectiveResolverFn<
 export type ResolversTypes = {
   Account: ResolverTypeWrapper<Account>;
   String: ResolverTypeWrapper<Scalars["String"]>;
-  Query: ResolverTypeWrapper<{}>;
+  Chat: ResolverTypeWrapper<Chat>;
   Int: ResolverTypeWrapper<Scalars["Int"]>;
+  Query: ResolverTypeWrapper<{}>;
   Boolean: ResolverTypeWrapper<Scalars["Boolean"]>;
 };
 
@@ -190,8 +204,9 @@ export type ResolversTypes = {
 export type ResolversParentTypes = {
   Account: Account;
   String: Scalars["String"];
-  Query: {};
+  Chat: Chat;
   Int: Scalars["Int"];
+  Query: {};
   Boolean: Scalars["Boolean"];
 };
 
@@ -200,6 +215,21 @@ export type AccountResolvers<
   ParentType extends ResolversParentTypes["Account"] = ResolversParentTypes["Account"]
 > = {
   publicKey?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
+  isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
+};
+
+export type ChatResolvers<
+  ContextType = MercuriusContext,
+  ParentType extends ResolversParentTypes["Chat"] = ResolversParentTypes["Chat"]
+> = {
+  publicKey?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
+  name?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
+  dailyActiveUsers?: Resolver<ResolversTypes["Int"], ParentType, ContextType>;
+  identifierCertificateMint?: Resolver<
+    ResolversTypes["String"],
+    ParentType,
+    ContextType
+  >;
   isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -234,10 +264,17 @@ export type QueryResolvers<
     ContextType,
     RequireFields<QuerytopTokensArgs, "baseMint" | "startRank" | "stopRank">
   >;
+  chats?: Resolver<
+    Array<ResolversTypes["Chat"]>,
+    ParentType,
+    ContextType,
+    RequireFields<QuerychatsArgs, never>
+  >;
 };
 
 export type Resolvers<ContextType = MercuriusContext> = {
   Account?: AccountResolvers<ContextType>;
+  Chat?: ChatResolvers<ContextType>;
   Query?: QueryResolvers<ContextType>;
 };
 
@@ -271,6 +308,18 @@ export interface Loaders<
 > {
   Account?: {
     publicKey?: LoaderResolver<Scalars["String"], Account, {}, TContext>;
+  };
+
+  Chat?: {
+    publicKey?: LoaderResolver<Scalars["String"], Chat, {}, TContext>;
+    name?: LoaderResolver<Scalars["String"], Chat, {}, TContext>;
+    dailyActiveUsers?: LoaderResolver<Scalars["Int"], Chat, {}, TContext>;
+    identifierCertificateMint?: LoaderResolver<
+      Scalars["String"],
+      Chat,
+      {},
+      TContext
+    >;
   };
 }
 declare module "mercurius" {

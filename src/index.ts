@@ -1,15 +1,15 @@
 import { BorshAccountsCoder } from "@project-serum/anchor";
 import { NATIVE_MINT } from "@solana/spl-token";
+import { PublicKey } from "@solana/web3.js";
 import { SplTokenBonding } from "@strata-foundation/spl-token-bonding";
+import axios from "axios";
+import bs58 from "bs58";
 import Fastify, { FastifyReply, FastifyRequest } from "fastify";
 import mercurius, { IResolvers, MercuriusLoaders } from "mercurius";
 import mercuriusCodegen, { gql } from "mercurius-codegen";
-import { provider } from "./solana";
-import bs58 from "bs58";
-import { PublicKey } from "@solana/web3.js";
-import axios from "axios";
-import { accelerator } from "./accelerator";
 import { messageFetcher } from "./messageFetcher";
+import { pool } from "./postgres";
+import { provider } from "./solana";
 
 export const app = Fastify();
 
@@ -37,6 +37,13 @@ const schema = gql`
     publicKey: String!
   }
 
+  type Chat {
+    publicKey: String!
+    name: String!
+    dailyActiveUsers: Int!
+    identifierCertificateMint: String!
+  }
+
   type Query {
     holderRank(tokenBonding: String!, account: String!): Int
     topHolders(
@@ -46,6 +53,8 @@ const schema = gql`
     ): [Account!]!
     tokenRank(baseMint: String!, tokenBonding: String!): Int
     topTokens(baseMint: String!, startRank: Int!, stopRank: Int!): [Account!]!
+
+    chats(pubkeys: [String]): [Chat!]!
   }
 `;
 
@@ -203,6 +212,33 @@ const resolvers: IResolvers = {
       const keys = (await getTopTokens(new PublicKey(baseMint))).slice(startRank, stopRank).map(k => k.tokenBonding);
       return keys.map((publicKey) => ({ publicKey }));
     },
+
+    async chats(_, { pubkeys }) {
+      const client = await pool.connect();
+      try {
+        const values = pubkeys ? [pubkeys] : [];
+        const query = `
+        SELECT pubkey as "publicKey", name, "identifierCertificateMint", "dailyActiveUsers" 
+        FROM acc_78
+        LEFT OUTER JOIN (
+          select chat, count(distinct(sender)) as "dailyActiveUsers"
+          FROM events_message_part_event_v_0_55
+          WHERE blocktime > 1659894862.773 -- ${
+            new Date().valueOf() / 1000 - 24 * 60 * 60
+          }
+          GROUP BY chat
+        ) unique_senders ON unique_senders.chat = acc_78.pubkey 
+        WHERE "dailyActiveUsers" > 0 ${pubkeys ? `AND pubkey IN $pubkeys` : ``}
+        ORDER BY slot DESC
+        LIMIT 50
+      `;
+        const data = await client.query(query, values);
+
+        return data.rows;
+      } finally {
+        client.release(true);
+      }
+    }
   },
 };
 
@@ -226,7 +262,7 @@ mercuriusCodegen(app, {
   operationsGlob: "./src/graphql/operations/*.gql",
 }).catch(console.error);
 
-accelerator(app);
+// accelerator(app);
 messageFetcher(app);
 
 app.listen(Number(process.env["PORT"] || "8080"), "0.0.0.0");

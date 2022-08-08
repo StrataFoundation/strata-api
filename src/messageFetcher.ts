@@ -1,15 +1,5 @@
 import { FastifyInstance } from "fastify";
-const { Pool } = require("pg");
-const pool = new Pool({
-  min: 0,
-  max: 3,
-  idle: 10000,
-  user: process.env.PG_USER,
-  host: process.env.PG_URL,
-  database: process.env.PG_DB,
-  password: process.env.PG_PASSWORD,
-  port: 5432,
-});
+import { pool } from "./postgres";
 
 export function messageFetcher(app: FastifyInstance) {
   app.post<{
