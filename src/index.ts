@@ -9,6 +9,7 @@ import bs58 from "bs58";
 import { PublicKey } from "@solana/web3.js";
 import axios from "axios";
 import { accelerator } from "./accelerator";
+import { messageFetcher } from "./messageFetcher";
 
 export const app = Fastify();
 
@@ -226,5 +227,6 @@ mercuriusCodegen(app, {
 }).catch(console.error);
 
 accelerator(app);
+messageFetcher(app);
 
 app.listen(Number(process.env["PORT"] || "8080"), "0.0.0.0");
