@@ -262,7 +262,7 @@ mercuriusCodegen(app, {
   operationsGlob: "./src/graphql/operations/*.gql",
 }).catch(console.error);
 
-// accelerator(app);
+accelerator(app);
 messageFetcher(app);
 
 app.listen(Number(process.env["PORT"] || "8080"), "0.0.0.0");
