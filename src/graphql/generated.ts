@@ -41,6 +41,8 @@ export type Chat = {
   name: Scalars["String"];
   dailyActiveUsers: Scalars["Int"];
   identifierCertificateMint: Scalars["String"];
+  metadataUrl: Scalars["String"];
+  imageUrl: Scalars["String"];
 };
 
 export type Query = {
@@ -76,6 +78,8 @@ export type QuerytopTokensArgs = {
 
 export type QuerychatsArgs = {
   pubkeys?: Maybe<Array<Maybe<Scalars["String"]>>>;
+  offset?: Maybe<Scalars["Int"]>;
+  limit?: Maybe<Scalars["Int"]>;
 };
 
 export type ResolverTypeWrapper<T> = Promise<T> | T;
@@ -230,6 +234,8 @@ export type ChatResolvers<
     ParentType,
     ContextType
   >;
+  metadataUrl?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
+  imageUrl?: Resolver<ResolversTypes["String"], ParentType, ContextType>;
   isTypeOf?: IsTypeOfResolverFn<ParentType, ContextType>;
 };
 
@@ -320,6 +326,8 @@ export interface Loaders<
       {},
       TContext
     >;
+    metadataUrl?: LoaderResolver<Scalars["String"], Chat, {}, TContext>;
+    imageUrl?: LoaderResolver<Scalars["String"], Chat, {}, TContext>;
   };
 }
 declare module "mercurius" {

@@ -43,6 +43,8 @@ const schema = gql`
     name: String!
     dailyActiveUsers: Int!
     identifierCertificateMint: String!
+    metadataUrl: String!
+    imageUrl: String!
   }
 
   type Query {
@@ -55,7 +57,7 @@ const schema = gql`
     tokenRank(baseMint: String!, tokenBonding: String!): Int
     topTokens(baseMint: String!, startRank: Int!, stopRank: Int!): [Account!]!
 
-    chats(pubkeys: [String]): [Chat!]!
+    chats(pubkeys: [String], offset: Int, limit: Int): [Chat!]!
   }
 `;
 
@@ -214,12 +216,14 @@ const resolvers: IResolvers = {
       return keys.map((publicKey) => ({ publicKey }));
     },
 
-    async chats(_, { pubkeys }) {
+    async chats(_, { pubkeys, limit = 50, offset = 0 }) {
       const client = await pool.connect();
       try {
-        const values = pubkeys ? [pubkeys] : [];
+        const values = [limit, offset, ...(pubkeys || [])]
+        const placeholders = pubkeys?.map((_, index) => `$${index + 3}`);
+
         const query = `
-        SELECT pubkey as "publicKey", name, "identifierCertificateMint", "dailyActiveUsers" 
+        SELECT pubkey as "publicKey", name, "imageUrl", "metadataUrl", "identifierCertificateMint", "dailyActiveUsers" 
         FROM acc_78
         LEFT OUTER JOIN (
           select chat, count(distinct(sender)) as "dailyActiveUsers"
@@ -229,9 +233,10 @@ const resolvers: IResolvers = {
           }
           GROUP BY chat
         ) unique_senders ON unique_senders.chat = acc_78.pubkey 
-        WHERE "dailyActiveUsers" > 0 ${pubkeys ? `AND pubkey IN $pubkeys` : ``}
+        WHERE "dailyActiveUsers" > 0 ${pubkeys ? `AND pubkey IN (${placeholders})` : ``}
         ORDER BY slot DESC
-        LIMIT 50
+        LIMIT $1
+        OFFSET $2
       `;
         const data = await client.query(query, values);
 
@@ -263,7 +268,7 @@ mercuriusCodegen(app, {
   operationsGlob: "./src/graphql/operations/*.gql",
 }).catch(console.error);
 
-accelerator(app);
+// accelerator(app);
 messageFetcher(app);
 
 app.listen(Number(process.env["PORT"] || "8080"), "0.0.0.0");
