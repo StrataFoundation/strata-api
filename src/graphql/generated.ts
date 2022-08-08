@@ -80,6 +80,7 @@ export type QuerychatsArgs = {
   pubkeys?: Maybe<Array<Maybe<Scalars["String"]>>>;
   offset?: Maybe<Scalars["Int"]>;
   limit?: Maybe<Scalars["Int"]>;
+  minActiveUsers?: Maybe<Scalars["Int"]>;
 };
 
 export type ResolverTypeWrapper<T> = Promise<T> | T;
