@@ -1,4 +1,5 @@
 import { BorshAccountsCoder } from "@project-serum/anchor";
+import { accelerator } from "./accelerator";
 import { NATIVE_MINT } from "@solana/spl-token";
 import { PublicKey } from "@solana/web3.js";
 import { SplTokenBonding } from "@strata-foundation/spl-token-bonding";
