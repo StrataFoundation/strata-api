@@ -223,17 +223,32 @@ const resolvers: IResolvers = {
         const placeholders = pubkeys?.map((_, index) => `$${index + 4}`);
 
         const query = `
-        SELECT pubkey as "publicKey", name, "imageUrl", "metadataUrl", "identifierCertificateMint", "dailyActiveUsers" 
-        FROM acc_78
+        WITH deduped_chats AS (
+          SELECT * FROM (
+            SELECT 
+              *, 
+              ROW_NUMBER() OVER(PARTITION BY pubkey ORDER BY slot DESC) AS r_num
+            FROM acc_78
+          ) chats
+          WHERE r_num = 1 
+        )
+        SELECT 
+          pubkey as "publicKey", 
+          name, 
+          "imageUrl", 
+          "metadataUrl", 
+          "identifierCertificateMint", 
+          "dailyActiveUsers"
+        FROM deduped_chats
         LEFT OUTER JOIN (
           select chat, count(distinct(sender)) as "dailyActiveUsers"
           FROM events_message_part_event_v_0_55
-          WHERE blocktime > ${
-            new Date().valueOf() / 1000 - 24 * 60 * 60
-          }
+          WHERE blocktime > ${new Date().valueOf() / 1000 - 24 * 60 * 60}
           GROUP BY chat
-        ) unique_senders ON unique_senders.chat = acc_78.pubkey 
-        WHERE "dailyActiveUsers" >= $3 ${pubkeys ? `AND pubkey IN (${placeholders})` : ``}
+        ) unique_senders ON unique_senders.chat = deduped_chats.pubkey 
+        WHERE "dailyActiveUsers" >= $3 ${
+          pubkeys ? `AND pubkey IN (${placeholders})` : ``
+        }
         ORDER BY slot DESC
         LIMIT $1
         OFFSET $2
