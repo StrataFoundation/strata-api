@@ -58,6 +58,7 @@ interface TransactionPayload extends Payload {
 interface ValidTransactionPayload extends TransactionPayload {
   blockTime: number;
   txid: string;
+  logs: string[] | null;
 }
 
 type StringPublicKey = string;
@@ -227,6 +228,7 @@ export function accelerator(app: FastifyInstance) {
 
               await publishTx({
                 ...transactionPayload,
+                logs: resp.value.logs,
                 blockTime: Number(blockTime),
                 txid,
               });
